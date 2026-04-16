@@ -719,6 +719,87 @@ module tinker_core (
         end
     endtask
 
+    task automatic resolve_branch_result;
+        input [4:0]  resolve_opcode;
+        input [63:0] resolve_a;
+        input [63:0] resolve_b;
+        input [63:0] resolve_c;
+        input [63:0] resolve_pc;
+        input [3:0]  resolve_rob_idx;
+        input        resolve_pred_taken;
+        input [63:0] resolve_pred_target;
+        begin
+            branch_taken = 1'b0;
+            branch_target = resolve_pc + 64'd4;
+
+            case (resolve_opcode)
+                OP_BR: begin
+                    branch_taken = 1'b1;
+                    branch_target = resolve_a;
+                end
+                OP_BRR_REG: begin
+                    branch_taken = 1'b1;
+                    branch_target = resolve_pc + resolve_a;
+                end
+                OP_BRR_LIT: begin
+                    branch_taken = 1'b1;
+                    branch_target = resolve_pc + resolve_a;
+                end
+                OP_BRNZ: begin
+                    branch_taken = (resolve_b != 64'd0);
+                    branch_target = resolve_a;
+                end
+                OP_BRGT: begin
+                    branch_taken = ($signed(resolve_b) > $signed(resolve_c));
+                    branch_target = resolve_a;
+                end
+                OP_CALL: begin
+                    branch_taken = 1'b1;
+                    branch_target = resolve_a;
+                    rob_store_addr[resolve_rob_idx] = resolve_b - 64'd8;
+                    rob_store_data[resolve_rob_idx] = resolve_pc + 64'd4;
+                    rob_store_addr_ready[resolve_rob_idx] = 1'b1;
+                    rob_store_data_ready[resolve_rob_idx] = 1'b1;
+                end
+                OP_RETURN: begin
+                    scan_store_forward(resolve_a - 64'd8, resolve_rob_idx, forward_found, forward_blocked, forwarded_value);
+                    if (forward_found)
+                        branch_target = forwarded_value;
+                    else
+                        branch_target = read_mem64_direct(resolve_a - 64'd8);
+                    branch_taken = 1'b1;
+                end
+                default: begin
+                    branch_taken = 1'b0;
+                    branch_target = resolve_pc + 64'd4;
+                end
+            endcase
+
+            fetch_bht_idx = bht_idx(resolve_pc);
+            if (branch_taken) begin
+                btb_valid[fetch_bht_idx] = 1'b1;
+                btb_target[fetch_bht_idx] = branch_target;
+                if (bht[fetch_bht_idx] != 2'b11)
+                    bht[fetch_bht_idx] = bht[fetch_bht_idx] + 2'b01;
+            end else if ((resolve_opcode == OP_BRNZ) || (resolve_opcode == OP_BRGT)) begin
+                if (bht[fetch_bht_idx] != 2'b00)
+                    bht[fetch_bht_idx] = bht[fetch_bht_idx] - 2'b01;
+            end
+
+            rob_ready[resolve_rob_idx] = 1'b1;
+            if (rob_is_store[resolve_rob_idx] &&
+                rob_store_addr_ready[resolve_rob_idx] &&
+                rob_store_data_ready[resolve_rob_idx])
+                rob_ready[resolve_rob_idx] = 1'b1;
+
+            if ((branch_taken != resolve_pred_taken) ||
+                (branch_taken && (branch_target != resolve_pred_target))) begin
+                mispredict = 1'b1;
+                correct_pc = branch_taken ? branch_target : (resolve_pc + 64'd4);
+            end
+        end
+    endtask
+
     task automatic scan_store_forward;
         input [63:0] addr;
         input integer cur_rob_idx;
@@ -900,73 +981,16 @@ module tinker_core (
 
                 if (alu0_s1_valid) begin
                     if (alu0_s1_is_branch) begin
-                        branch_taken = 1'b0;
-                        branch_target = alu0_s1_pc + 64'd4;
-
-                        case (alu0_s1_opcode)
-                            OP_BR: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu0_s1_a;
-                            end
-                            OP_BRR_REG: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu0_s1_pc + alu0_s1_a;
-                            end
-                            OP_BRR_LIT: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu0_s1_pc + alu0_s1_a;
-                            end
-                            OP_BRNZ: begin
-                                branch_taken = (alu0_s1_b != 64'd0);
-                                branch_target = alu0_s1_a;
-                            end
-                            OP_BRGT: begin
-                                branch_taken = ($signed(alu0_s1_b) > $signed(alu0_s1_c));
-                                branch_target = alu0_s1_a;
-                            end
-                            OP_CALL: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu0_s1_a;
-                                rob_store_addr[alu0_s1_rob_idx] = alu0_s1_b - 64'd8;
-                                rob_store_data[alu0_s1_rob_idx] = alu0_s1_pc + 64'd4;
-                                rob_store_addr_ready[alu0_s1_rob_idx] = 1'b1;
-                                rob_store_data_ready[alu0_s1_rob_idx] = 1'b1;
-                            end
-                            OP_RETURN: begin
-                                scan_store_forward(alu0_s1_a - 64'd8, alu0_s1_rob_idx, forward_found, forward_blocked, forwarded_value);
-                                if (forward_found)
-                                    branch_target = forwarded_value;
-                                else
-                                    branch_target = read_mem64_direct(alu0_s1_a - 64'd8);
-                                branch_taken = 1'b1;
-                            end
-                            default: begin
-                                branch_taken = 1'b0;
-                                branch_target = alu0_s1_pc + 64'd4;
-                            end
-                        endcase
-
-                        fetch_bht_idx = bht_idx(alu0_s1_pc);
-                        if (branch_taken) begin
-                            btb_valid[fetch_bht_idx] = 1'b1;
-                            btb_target[fetch_bht_idx] = branch_target;
-                            if (bht[fetch_bht_idx] != 2'b11)
-                                bht[fetch_bht_idx] = bht[fetch_bht_idx] + 2'b01;
-                        end else if ((alu0_s1_opcode == OP_BRNZ) || (alu0_s1_opcode == OP_BRGT)) begin
-                            if (bht[fetch_bht_idx] != 2'b00)
-                                bht[fetch_bht_idx] = bht[fetch_bht_idx] - 2'b01;
-                        end
-
-                        rob_ready[alu0_s1_rob_idx] = 1'b1;
-
-                        if (rob_is_store[alu0_s1_rob_idx] && rob_store_addr_ready[alu0_s1_rob_idx] && rob_store_data_ready[alu0_s1_rob_idx])
-                            rob_ready[alu0_s1_rob_idx] = 1'b1;
-
-                        if ((branch_taken != alu0_s1_pred_taken) ||
-                            (branch_taken && (branch_target != alu0_s1_pred_target))) begin
-                            mispredict = 1'b1;
-                            correct_pc = branch_taken ? branch_target : (alu0_s1_pc + 64'd4);
-                        end
+                        resolve_branch_result(
+                            alu0_s1_opcode,
+                            alu0_s1_a,
+                            alu0_s1_b,
+                            alu0_s1_c,
+                            alu0_s1_pc,
+                            alu0_s1_rob_idx,
+                            alu0_s1_pred_taken,
+                            alu0_s1_pred_target
+                        );
                     end else if (alu0_s1_has_dest) begin
                         finish_result(alu0_s1_dest_phys, alu0_s1_rob_idx, alu0_s1_result);
                     end
@@ -974,73 +998,16 @@ module tinker_core (
 
                 if (alu1_s1_valid && !mispredict) begin
                     if (alu1_s1_is_branch) begin
-                        branch_taken = 1'b0;
-                        branch_target = alu1_s1_pc + 64'd4;
-
-                        case (alu1_s1_opcode)
-                            OP_BR: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu1_s1_a;
-                            end
-                            OP_BRR_REG: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu1_s1_pc + alu1_s1_a;
-                            end
-                            OP_BRR_LIT: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu1_s1_pc + alu1_s1_a;
-                            end
-                            OP_BRNZ: begin
-                                branch_taken = (alu1_s1_b != 64'd0);
-                                branch_target = alu1_s1_a;
-                            end
-                            OP_BRGT: begin
-                                branch_taken = ($signed(alu1_s1_b) > $signed(alu1_s1_c));
-                                branch_target = alu1_s1_a;
-                            end
-                            OP_CALL: begin
-                                branch_taken = 1'b1;
-                                branch_target = alu1_s1_a;
-                                rob_store_addr[alu1_s1_rob_idx] = alu1_s1_b - 64'd8;
-                                rob_store_data[alu1_s1_rob_idx] = alu1_s1_pc + 64'd4;
-                                rob_store_addr_ready[alu1_s1_rob_idx] = 1'b1;
-                                rob_store_data_ready[alu1_s1_rob_idx] = 1'b1;
-                            end
-                            OP_RETURN: begin
-                                scan_store_forward(alu1_s1_a - 64'd8, alu1_s1_rob_idx, forward_found, forward_blocked, forwarded_value);
-                                if (forward_found)
-                                    branch_target = forwarded_value;
-                                else
-                                    branch_target = read_mem64_direct(alu1_s1_a - 64'd8);
-                                branch_taken = 1'b1;
-                            end
-                            default: begin
-                                branch_taken = 1'b0;
-                                branch_target = alu1_s1_pc + 64'd4;
-                            end
-                        endcase
-
-                        fetch_bht_idx = bht_idx(alu1_s1_pc);
-                        if (branch_taken) begin
-                            btb_valid[fetch_bht_idx] = 1'b1;
-                            btb_target[fetch_bht_idx] = branch_target;
-                            if (bht[fetch_bht_idx] != 2'b11)
-                                bht[fetch_bht_idx] = bht[fetch_bht_idx] + 2'b01;
-                        end else if ((alu1_s1_opcode == OP_BRNZ) || (alu1_s1_opcode == OP_BRGT)) begin
-                            if (bht[fetch_bht_idx] != 2'b00)
-                                bht[fetch_bht_idx] = bht[fetch_bht_idx] - 2'b01;
-                        end
-
-                        rob_ready[alu1_s1_rob_idx] = 1'b1;
-
-                        if (rob_is_store[alu1_s1_rob_idx] && rob_store_addr_ready[alu1_s1_rob_idx] && rob_store_data_ready[alu1_s1_rob_idx])
-                            rob_ready[alu1_s1_rob_idx] = 1'b1;
-
-                        if ((branch_taken != alu1_s1_pred_taken) ||
-                            (branch_taken && (branch_target != alu1_s1_pred_target))) begin
-                            mispredict = 1'b1;
-                            correct_pc = branch_taken ? branch_target : (alu1_s1_pc + 64'd4);
-                        end
+                        resolve_branch_result(
+                            alu1_s1_opcode,
+                            alu1_s1_a,
+                            alu1_s1_b,
+                            alu1_s1_c,
+                            alu1_s1_pc,
+                            alu1_s1_rob_idx,
+                            alu1_s1_pred_taken,
+                            alu1_s1_pred_target
+                        );
                     end else if (alu1_s1_has_dest) begin
                         finish_result(alu1_s1_dest_phys, alu1_s1_rob_idx, alu1_s1_result);
                     end
@@ -1080,6 +1047,32 @@ module tinker_core (
                         finish_result(lsq_dest_phys[lsu1_s1_lsq_idx], lsq_rob_idx[lsu1_s1_lsq_idx], lsu1_s1_result);
                         lsq_valid[lsu1_s1_lsq_idx] = 1'b0;
                     end
+                end
+
+                if (alu0_s0_valid && alu0_s0_is_branch && !mispredict) begin
+                    resolve_branch_result(
+                        alu0_s0_opcode,
+                        alu0_s0_a,
+                        alu0_s0_b,
+                        alu0_s0_c,
+                        alu0_s0_pc,
+                        alu0_s0_rob_idx,
+                        alu0_s0_pred_taken,
+                        alu0_s0_pred_target
+                    );
+                end
+
+                if (alu1_s0_valid && alu1_s0_is_branch && !mispredict) begin
+                    resolve_branch_result(
+                        alu1_s0_opcode,
+                        alu1_s0_a,
+                        alu1_s0_b,
+                        alu1_s0_c,
+                        alu1_s0_pc,
+                        alu1_s0_rob_idx,
+                        alu1_s0_pred_taken,
+                        alu1_s0_pred_target
+                    );
                 end
 
                 if (mispredict && checkpoint_valid) begin
@@ -1146,55 +1139,60 @@ module tinker_core (
                     checkpoint_valid = 1'b0;
                 end
 
-                if (rob_count != 0 && rob_valid[rob_head] && rob_ready[rob_head]) begin
-                    if (rob_is_store[rob_head]) begin
-                        addr_idx = rob_store_addr[rob_head][31:0];
-                        if (addr_idx + 7 < MEM_SIZE) begin
-                            memory.bytes[addr_idx + 0] = rob_store_data[rob_head][7:0];
-                            memory.bytes[addr_idx + 1] = rob_store_data[rob_head][15:8];
-                            memory.bytes[addr_idx + 2] = rob_store_data[rob_head][23:16];
-                            memory.bytes[addr_idx + 3] = rob_store_data[rob_head][31:24];
-                            memory.bytes[addr_idx + 4] = rob_store_data[rob_head][39:32];
-                            memory.bytes[addr_idx + 5] = rob_store_data[rob_head][47:40];
-                            memory.bytes[addr_idx + 6] = rob_store_data[rob_head][55:48];
-                            memory.bytes[addr_idx + 7] = rob_store_data[rob_head][63:56];
-                        end
+                // Retire up to two contiguous ready ROB entries each cycle.
+                for (commit_count = 0; commit_count < 2; commit_count = commit_count + 1) begin
+                    if (rob_count != 0 && rob_valid[rob_head] && rob_ready[rob_head]) begin
+                        head_idx = rob_head;
 
-                        for (i = 0; i < LSQ_SIZE; i = i + 1) begin
-                            if (lsq_valid[i] && !lsq_is_load[i] && (lsq_rob_idx[i] == rob_head[3:0])) begin
-                                lsq_valid[i] = 1'b0;
-                                lsq_inflight[i] = 1'b0;
+                        if (rob_is_store[head_idx]) begin
+                            addr_idx = rob_store_addr[head_idx][31:0];
+                            if (addr_idx + 7 < MEM_SIZE) begin
+                                memory.bytes[addr_idx + 0] = rob_store_data[head_idx][7:0];
+                                memory.bytes[addr_idx + 1] = rob_store_data[head_idx][15:8];
+                                memory.bytes[addr_idx + 2] = rob_store_data[head_idx][23:16];
+                                memory.bytes[addr_idx + 3] = rob_store_data[head_idx][31:24];
+                                memory.bytes[addr_idx + 4] = rob_store_data[head_idx][39:32];
+                                memory.bytes[addr_idx + 5] = rob_store_data[head_idx][47:40];
+                                memory.bytes[addr_idx + 6] = rob_store_data[head_idx][55:48];
+                                memory.bytes[addr_idx + 7] = rob_store_data[head_idx][63:56];
+                            end
+
+                            for (i = 0; i < LSQ_SIZE; i = i + 1) begin
+                                if (lsq_valid[i] && !lsq_is_load[i] && (lsq_rob_idx[i] == head_idx[3:0])) begin
+                                    lsq_valid[i] = 1'b0;
+                                    lsq_inflight[i] = 1'b0;
+                                end
                             end
                         end
-                    end
 
-                    if (rob_has_dest[rob_head]) begin
-                        reg_file.registers[rob_arch_dest[rob_head]] = rob_value[rob_head];
-                        if (rob_old_phys[rob_head] >= ARCH_REGS) begin
-                            free_list[free_count] = rob_old_phys[rob_head];
-                            free_count = free_count + 1;
-                            if (checkpoint_valid) begin
-                                checkpoint_free_list[checkpoint_free_count] = rob_old_phys[rob_head];
-                                checkpoint_free_count = checkpoint_free_count + 1;
+                        if (rob_has_dest[head_idx]) begin
+                            reg_file.registers[rob_arch_dest[head_idx]] = rob_value[head_idx];
+                            if (rob_old_phys[head_idx] >= ARCH_REGS) begin
+                                free_list[free_count] = rob_old_phys[head_idx];
+                                free_count = free_count + 1;
+                                if (checkpoint_valid) begin
+                                    checkpoint_free_list[checkpoint_free_count] = rob_old_phys[head_idx];
+                                    checkpoint_free_count = checkpoint_free_count + 1;
+                                end
                             end
                         end
+
+                        if (rob_is_halt[head_idx])
+                            hlt <= 1'b1;
+
+                        rob_valid[head_idx] = 1'b0;
+                        rob_head = rob_inc(head_idx);
+                        rob_count = rob_count - 1;
                     end
-
-                    if (rob_is_halt[rob_head])
-                        hlt <= 1'b1;
-
-                    rob_valid[rob_head] = 1'b0;
-                    rob_head = rob_inc(rob_head);
-                    rob_count = rob_count - 1;
                 end
 
-                alu0_s1_valid = alu0_s0_valid;
+                alu0_s1_valid = alu0_s0_valid && !alu0_s0_is_branch;
                 alu0_s1_opcode = alu0_s0_opcode;
                 alu0_s1_a = alu0_s0_a;
                 alu0_s1_b = alu0_s0_b;
                 alu0_s1_c = alu0_s0_c;
                 alu0_s1_pc = alu0_s0_pc;
-                alu0_s1_is_branch = alu0_s0_is_branch;
+                alu0_s1_is_branch = 1'b0;
                 alu0_s1_has_dest = alu0_s0_has_dest;
                 alu0_s1_dest_phys = alu0_s0_dest_phys;
                 alu0_s1_rob_idx = alu0_s0_rob_idx;
@@ -1205,13 +1203,13 @@ module tinker_core (
                 else
                     alu0_s1_result = alu0_pipe_result;
 
-                alu1_s1_valid = alu1_s0_valid;
+                alu1_s1_valid = alu1_s0_valid && !alu1_s0_is_branch;
                 alu1_s1_opcode = alu1_s0_opcode;
                 alu1_s1_a = alu1_s0_a;
                 alu1_s1_b = alu1_s0_b;
                 alu1_s1_c = alu1_s0_c;
                 alu1_s1_pc = alu1_s0_pc;
-                alu1_s1_is_branch = alu1_s0_is_branch;
+                alu1_s1_is_branch = 1'b0;
                 alu1_s1_has_dest = alu1_s0_has_dest;
                 alu1_s1_dest_phys = alu1_s0_dest_phys;
                 alu1_s1_rob_idx = alu1_s0_rob_idx;
