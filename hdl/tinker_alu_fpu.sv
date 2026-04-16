@@ -56,25 +56,28 @@ module tinker_fpu(
 
     localparam QUIET_NAN  = 64'h7ff8_0000_0000_0000;
 
-    function automatic is_nan64(input [63:0] x);
+    function is_nan64;
+        input [63:0] x;
         begin
             is_nan64 = (x[62:52] == 11'h7ff) && (x[51:0] != 0);
         end
     endfunction
 
-    function automatic is_inf64(input [63:0] x);
+    function is_inf64;
+        input [63:0] x;
         begin
             is_inf64 = (x[62:52] == 11'h7ff) && (x[51:0] == 0);
         end
     endfunction
 
-    function automatic is_zero64(input [63:0] x);
+    function is_zero64;
+        input [63:0] x;
         begin
             is_zero64 = (x[62:52] == 0) && (x[51:0] == 0);
         end
     endfunction
 
-    function automatic [55:0] shr_sticky56;
+    function [55:0] shr_sticky56;
         input [55:0] x;
         input integer sh;
         reg [55:0] tmp;
@@ -96,7 +99,7 @@ module tinker_fpu(
         end
     endfunction
 
-    function automatic [63:0] pack;
+    function [63:0] pack;
         input sign;
         input integer exp_unbiased;
         input [55:0] ext;
@@ -148,7 +151,7 @@ module tinker_fpu(
         end
     endfunction
 
-    function automatic [63:0] fp_addsub64;
+    function [63:0] fp_addsub64;
         input [63:0] x;
         input [63:0] y;
         input sub;
@@ -176,6 +179,7 @@ module tinker_fpu(
         integer sh;
         integer e_big;
         integer e_small;
+        integer norm_i;
         begin
             y2 = sub ? {~y[63], y[62:0]} : y;
 
@@ -240,9 +244,11 @@ module tinker_fpu(
                     if (ex_res == 0) begin
                         fp_addsub64 = 64'd0;
                     end
-                    while ((ex_res[55] == 1'b0) && (er > -1022)) begin
-                        ex_res = ex_res << 1;
-                        er = er - 1;
+                    for (norm_i = 0; norm_i < 56; norm_i = norm_i + 1) begin
+                        if ((ex_res[55] == 1'b0) && (er > -1022)) begin
+                            ex_res = ex_res << 1;
+                            er = er - 1;
+                        end
                     end
                 end
 
@@ -251,7 +257,7 @@ module tinker_fpu(
         end
     endfunction
 
-    function automatic [63:0] fp_mul64;
+    function [63:0] fp_mul64;
         input [63:0] x;
         input [63:0] y;
         reg sx;
@@ -303,7 +309,7 @@ module tinker_fpu(
         end
     endfunction
 
-    function automatic [63:0] fp_div64;
+    function [63:0] fp_div64;
         input [63:0] x;
         input [63:0] y;
         reg sx;

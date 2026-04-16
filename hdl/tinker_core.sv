@@ -1480,7 +1480,8 @@ module tinker_core (
                     fetch_stop = 1'b0;
                     halt_inflight = 1'b0;
                     for (i = 0; i < ROB_SIZE; i = i + 1) begin
-                        if (rob_valid[i] && rob_is_halt[i])
+                        if (rob_valid[i] && rob_is_halt[i] &&
+                            (!checkpoint_valid || !rob_younger_than(i, checkpoint_rob_idx)))
                             halt_inflight = 1'b1;
                     end
                     if (halt_inflight)
