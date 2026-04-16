@@ -1159,6 +1159,13 @@ module tinker_core (
                             memory.bytes[addr_idx + 6] = rob_store_data[rob_head][55:48];
                             memory.bytes[addr_idx + 7] = rob_store_data[rob_head][63:56];
                         end
+
+                        for (i = 0; i < LSQ_SIZE; i = i + 1) begin
+                            if (lsq_valid[i] && !lsq_is_load[i] && (lsq_rob_idx[i] == rob_head[3:0])) begin
+                                lsq_valid[i] = 1'b0;
+                                lsq_inflight[i] = 1'b0;
+                            end
+                        end
                     end
 
                     if (rob_has_dest[rob_head]) begin
