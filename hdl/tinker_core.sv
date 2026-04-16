@@ -160,6 +160,7 @@ module tinker_core (
     reg        lsq_has_dest [0:LSQ_SIZE-1];
     reg [5:0]  lsq_dest_phys [0:LSQ_SIZE-1];
     reg [3:0]  lsq_rob_idx [0:LSQ_SIZE-1];
+    reg        lsq_inflight [0:LSQ_SIZE-1];
 
     reg [1:0]  bht [0:BHT_SIZE-1];
     reg        btb_valid [0:BHT_SIZE-1];
@@ -628,39 +629,38 @@ module tinker_core (
         input [5:0] tag;
         input [63:0] value;
         begin
-            if (tag >= PHYS_REGS)
-                disable wakeup_tag;
-
-            for (k = 0; k < RS_SIZE; k = k + 1) begin
-                if (rs_valid[k]) begin
-                    if (rs_use0[k] && rs_src0_wait[k] && (rs_src0_tag[k] == tag)) begin
-                        rs_src0_wait[k] = 1'b0;
-                        rs_src0_val[k] = value;
-                    end
-                    if (rs_use1[k] && rs_src1_wait[k] && (rs_src1_tag[k] == tag)) begin
-                        rs_src1_wait[k] = 1'b0;
-                        rs_src1_val[k] = value;
-                    end
-                    if (rs_use2[k] && rs_src2_wait[k] && (rs_src2_tag[k] == tag)) begin
-                        rs_src2_wait[k] = 1'b0;
-                        rs_src2_val[k] = value;
+            if (tag < PHYS_REGS) begin
+                for (k = 0; k < RS_SIZE; k = k + 1) begin
+                    if (rs_valid[k]) begin
+                        if (rs_use0[k] && rs_src0_wait[k] && (rs_src0_tag[k] == tag)) begin
+                            rs_src0_wait[k] = 1'b0;
+                            rs_src0_val[k] = value;
+                        end
+                        if (rs_use1[k] && rs_src1_wait[k] && (rs_src1_tag[k] == tag)) begin
+                            rs_src1_wait[k] = 1'b0;
+                            rs_src1_val[k] = value;
+                        end
+                        if (rs_use2[k] && rs_src2_wait[k] && (rs_src2_tag[k] == tag)) begin
+                            rs_src2_wait[k] = 1'b0;
+                            rs_src2_val[k] = value;
+                        end
                     end
                 end
-            end
 
-            for (k = 0; k < LSQ_SIZE; k = k + 1) begin
-                if (lsq_valid[k]) begin
-                    if (lsq_base_wait[k] && (lsq_base_tag[k] == tag)) begin
-                        lsq_base_wait[k] = 1'b0;
-                        lsq_base_val[k] = value;
-                    end
-                    if (!lsq_is_load[k] && lsq_store_wait[k] && (lsq_store_tag[k] == tag)) begin
-                        lsq_store_wait[k] = 1'b0;
-                        lsq_store_val[k] = value;
-                        rob_store_data[lsq_rob_idx[k]] = value;
-                        rob_store_data_ready[lsq_rob_idx[k]] = 1'b1;
-                        if (rob_store_addr_ready[lsq_rob_idx[k]])
-                            rob_ready[lsq_rob_idx[k]] = 1'b1;
+                for (k = 0; k < LSQ_SIZE; k = k + 1) begin
+                    if (lsq_valid[k]) begin
+                        if (lsq_base_wait[k] && (lsq_base_tag[k] == tag)) begin
+                            lsq_base_wait[k] = 1'b0;
+                            lsq_base_val[k] = value;
+                        end
+                        if (!lsq_is_load[k] && lsq_store_wait[k] && (lsq_store_tag[k] == tag)) begin
+                            lsq_store_wait[k] = 1'b0;
+                            lsq_store_val[k] = value;
+                            rob_store_data[lsq_rob_idx[k]] = value;
+                            rob_store_data_ready[lsq_rob_idx[k]] = 1'b1;
+                            if (rob_store_addr_ready[lsq_rob_idx[k]])
+                                rob_ready[lsq_rob_idx[k]] = 1'b1;
+                        end
                     end
                 end
             end
@@ -883,6 +883,7 @@ module tinker_core (
                 lsq_has_dest[i] = 1'b0;
                 lsq_dest_phys[i] = 6'd0;
                 lsq_rob_idx[i] = 4'd0;
+                lsq_inflight[i] = 1'b0;
             end
 
             for (i = 0; i < BHT_SIZE; i = i + 1) begin
@@ -1052,6 +1053,7 @@ module tinker_core (
                     finish_result(fpu1_s3_dest_phys, fpu1_s3_rob_idx, fpu1_s3_result);
 
                 if (lsu0_s1_valid && !mispredict) begin
+                    lsq_inflight[lsu0_s1_lsq_idx] = 1'b0;
                     if (lsu0_s1_is_addr) begin
                         lsq_addr_ready[lsu0_s1_lsq_idx] = 1'b1;
                         lsq_addr[lsu0_s1_lsq_idx] = lsu0_s1_addr;
@@ -1066,6 +1068,7 @@ module tinker_core (
                 end
 
                 if (lsu1_s1_valid && !mispredict) begin
+                    lsq_inflight[lsu1_s1_lsq_idx] = 1'b0;
                     if (lsu1_s1_is_addr) begin
                         lsq_addr_ready[lsu1_s1_lsq_idx] = 1'b1;
                         lsq_addr[lsu1_s1_lsq_idx] = lsu1_s1_addr;
@@ -1100,8 +1103,10 @@ module tinker_core (
                     end
 
                     for (i = 0; i < LSQ_SIZE; i = i + 1) begin
-                        if (lsq_valid[i] && rob_younger_than(lsq_rob_idx[i], checkpoint_rob_idx))
+                        if (lsq_valid[i] && rob_younger_than(lsq_rob_idx[i], checkpoint_rob_idx)) begin
                             lsq_valid[i] = 1'b0;
+                            lsq_inflight[i] = 1'b0;
+                        end
                     end
 
                     if (alu0_s0_valid && rob_younger_than(alu0_s0_rob_idx, checkpoint_rob_idx)) alu0_s0_valid = 1'b0;
@@ -1116,10 +1121,22 @@ module tinker_core (
                     if (fpu1_s2_valid && rob_younger_than(fpu1_s2_rob_idx, checkpoint_rob_idx)) fpu1_s2_valid = 1'b0;
                     if (fpu0_s3_valid && rob_younger_than(fpu0_s3_rob_idx, checkpoint_rob_idx)) fpu0_s3_valid = 1'b0;
                     if (fpu1_s3_valid && rob_younger_than(fpu1_s3_rob_idx, checkpoint_rob_idx)) fpu1_s3_valid = 1'b0;
-                    if (lsu0_s0_valid && rob_younger_than(lsu0_s0_rob_idx, checkpoint_rob_idx)) lsu0_s0_valid = 1'b0;
-                    if (lsu1_s0_valid && rob_younger_than(lsu1_s0_rob_idx, checkpoint_rob_idx)) lsu1_s0_valid = 1'b0;
-                    if (lsu0_s1_valid && rob_younger_than(lsu0_s1_rob_idx, checkpoint_rob_idx)) lsu0_s1_valid = 1'b0;
-                    if (lsu1_s1_valid && rob_younger_than(lsu1_s1_rob_idx, checkpoint_rob_idx)) lsu1_s1_valid = 1'b0;
+                    if (lsu0_s0_valid && rob_younger_than(lsu0_s0_rob_idx, checkpoint_rob_idx)) begin
+                        lsq_inflight[lsu0_s0_lsq_idx] = 1'b0;
+                        lsu0_s0_valid = 1'b0;
+                    end
+                    if (lsu1_s0_valid && rob_younger_than(lsu1_s0_rob_idx, checkpoint_rob_idx)) begin
+                        lsq_inflight[lsu1_s0_lsq_idx] = 1'b0;
+                        lsu1_s0_valid = 1'b0;
+                    end
+                    if (lsu0_s1_valid && rob_younger_than(lsu0_s1_rob_idx, checkpoint_rob_idx)) begin
+                        lsq_inflight[lsu0_s1_lsq_idx] = 1'b0;
+                        lsu0_s1_valid = 1'b0;
+                    end
+                    if (lsu1_s1_valid && rob_younger_than(lsu1_s1_rob_idx, checkpoint_rob_idx)) begin
+                        lsq_inflight[lsu1_s1_lsq_idx] = 1'b0;
+                        lsu1_s1_valid = 1'b0;
+                    end
 
                     checkpoint_valid = 1'b0;
                     fetch.pc = correct_pc;
@@ -1149,6 +1166,10 @@ module tinker_core (
                         if (rob_old_phys[rob_head] >= ARCH_REGS) begin
                             free_list[free_count] = rob_old_phys[rob_head];
                             free_count = free_count + 1;
+                            if (checkpoint_valid) begin
+                                checkpoint_free_list[checkpoint_free_count] = rob_old_phys[rob_head];
+                                checkpoint_free_count = checkpoint_free_count + 1;
+                            end
                         end
                     end
 
@@ -1317,13 +1338,19 @@ module tinker_core (
                     end
 
                     for (i = 0; i < LSQ_SIZE; i = i + 1) begin
-                        if (lsq_valid[i] && lsq_is_load[i] && lsq_addr_ready[i]) begin
+                        if (lsq_valid[i] && !lsq_inflight[i] &&
+                            !(lsu0_s1_valid && (lsu0_s1_lsq_idx == i[2:0])) &&
+                            !(lsu1_s1_valid && (lsu1_s1_lsq_idx == i[2:0])) &&
+                            lsq_is_load[i] && lsq_addr_ready[i]) begin
                             scan_store_forward(lsq_addr[i], lsq_rob_idx[i], forward_found, forward_blocked, forwarded_value);
                             if (!forward_blocked) begin
                                 if ((ls_pick0 == -1) || (rob_distance(lsq_rob_idx[i]) < rob_distance(lsq_rob_idx[ls_pick0])))
                                     ls_pick0 = i;
                             end
-                        end else if (lsq_valid[i] && !lsq_addr_ready[i] && !lsq_base_wait[i]) begin
+                        end else if (lsq_valid[i] && !lsq_inflight[i] &&
+                                     !(lsu0_s1_valid && (lsu0_s1_lsq_idx == i[2:0])) &&
+                                     !(lsu1_s1_valid && (lsu1_s1_lsq_idx == i[2:0])) &&
+                                     !lsq_addr_ready[i] && !lsq_base_wait[i]) begin
                             if ((ls_pick0 == -1) || (rob_distance(lsq_rob_idx[i]) < rob_distance(lsq_rob_idx[ls_pick0])))
                                 ls_pick0 = i;
                         end
@@ -1332,13 +1359,19 @@ module tinker_core (
                     if (ls_pick0 != -1) begin
                         for (i = 0; i < LSQ_SIZE; i = i + 1) begin
                             if (i != ls_pick0) begin
-                                if (lsq_valid[i] && lsq_is_load[i] && lsq_addr_ready[i]) begin
+                                if (lsq_valid[i] && !lsq_inflight[i] &&
+                                    !(lsu0_s1_valid && (lsu0_s1_lsq_idx == i[2:0])) &&
+                                    !(lsu1_s1_valid && (lsu1_s1_lsq_idx == i[2:0])) &&
+                                    lsq_is_load[i] && lsq_addr_ready[i]) begin
                                     scan_store_forward(lsq_addr[i], lsq_rob_idx[i], forward_found, forward_blocked, forwarded_value);
                                     if (!forward_blocked) begin
                                         if ((ls_pick1 == -1) || (rob_distance(lsq_rob_idx[i]) < rob_distance(lsq_rob_idx[ls_pick1])))
                                             ls_pick1 = i;
                                     end
-                                end else if (lsq_valid[i] && !lsq_addr_ready[i] && !lsq_base_wait[i]) begin
+                                end else if (lsq_valid[i] && !lsq_inflight[i] &&
+                                             !(lsu0_s1_valid && (lsu0_s1_lsq_idx == i[2:0])) &&
+                                             !(lsu1_s1_valid && (lsu1_s1_lsq_idx == i[2:0])) &&
+                                             !lsq_addr_ready[i] && !lsq_base_wait[i]) begin
                                     if ((ls_pick1 == -1) || (rob_distance(lsq_rob_idx[i]) < rob_distance(lsq_rob_idx[ls_pick1])))
                                         ls_pick1 = i;
                                 end
@@ -1402,6 +1435,7 @@ module tinker_core (
 
                     if (ls_pick0 != -1) begin
                         lsu0_s0_valid = 1'b1;
+                        lsq_inflight[ls_pick0] = 1'b1;
                         lsu0_s0_lsq_idx = ls_pick0[2:0];
                         lsu0_s0_rob_idx = lsq_rob_idx[ls_pick0];
                         if (!lsq_addr_ready[ls_pick0]) begin
@@ -1419,6 +1453,7 @@ module tinker_core (
 
                     if (ls_pick1 != -1) begin
                         lsu1_s0_valid = 1'b1;
+                        lsq_inflight[ls_pick1] = 1'b1;
                         lsu1_s0_lsq_idx = ls_pick1[2:0];
                         lsu1_s0_rob_idx = lsq_rob_idx[ls_pick1];
                         if (!lsq_addr_ready[ls_pick1]) begin
