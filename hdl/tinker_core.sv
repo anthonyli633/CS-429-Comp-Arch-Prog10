@@ -12,7 +12,7 @@ module tinker_core (
     localparam ROB_SIZE       = 16;
     localparam RS_SIZE        = 12;
     localparam LSQ_SIZE       = 8;
-    localparam BHT_SIZE       = 16;
+    localparam BHT_SIZE       = 256;
 
     localparam OP_AND       = 5'h00;
     localparam OP_OR        = 5'h01;
@@ -467,7 +467,7 @@ module tinker_core (
 
     function automatic integer bht_idx(input [63:0] pc);
         begin
-            bht_idx = pc[5:2];
+            bht_idx = pc[9:2];
         end
     endfunction
 
