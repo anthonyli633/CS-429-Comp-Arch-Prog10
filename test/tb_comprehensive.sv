@@ -207,14 +207,14 @@ module tb_comprehensive;
         expect64("and r4", dut.reg_file.registers[4], 64'd5);
         expect_true("pipeline cadence", cycles <= 12);
 
-        // MOV_LIT keeps the upper bits from rd.
+        // MOV_LIT overwrites the full register with the zero-extended literal.
         clear_program();
-        write_inst(64'h2000, enc_rd_lit(OP_ADDI, 5'd5, 12'hABC));
-        write_inst(64'h2004, enc_rd_lit(OP_MOV_LIT, 5'd5, 12'h123));
-        write_inst(64'h2008, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+        write_inst(64'h2000, enc_rd_lit(OP_MOV_LIT, 5'd5, 12'h123));
+        write_inst(64'h2004, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
         do_reset();
+        dut.reg_file.registers[5] = 64'h1234_5678_9abc_def0;
         run_until_halt(60);
-        expect64("mov_lit low bits", dut.reg_file.registers[5], 64'h0000_0000_0000_0123);
+        expect64("mov_lit full overwrite", dut.reg_file.registers[5], 64'h0000_0000_0000_0123);
 
         // Store/load path and store-to-load visibility.
         clear_program();
