@@ -10,11 +10,11 @@ module tinker_core (
     localparam PHYS_REGS      = 64;
     localparam FREE_COUNT_MAX = PHYS_REGS - ARCH_REGS;
     localparam ROB_SIZE       = 16;
-    localparam RS_SIZE        = 12;
-    localparam LSQ_SIZE       = 8;
+    localparam RS_SIZE        = 16;
+    localparam LSQ_SIZE       = 12;
     localparam BHT_SIZE       = 256;
-    localparam FETCH_WIDTH    = 3;
-    localparam COMMIT_WIDTH   = 3;
+    localparam FETCH_WIDTH    = 4;
+    localparam COMMIT_WIDTH   = 4;
 
     localparam OP_AND       = 5'h00;
     localparam OP_OR        = 5'h01;
