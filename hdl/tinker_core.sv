@@ -1218,7 +1218,7 @@ module tinker_core (
                 alu0_s1_pred_taken = alu0_s0_pred_taken;
                 alu0_s1_pred_target = alu0_s0_pred_target;
                 if (alu0_s0_opcode == OP_MOV_LIT)
-                    alu0_s1_result = {52'd0, alu0_s0_b[11:0]};
+                    alu0_s1_result = {alu0_s0_a[63:12], alu0_s0_b[11:0]};
                 else
                     alu0_s1_result = alu0_pipe_result;
 
@@ -1235,7 +1235,7 @@ module tinker_core (
                 alu1_s1_pred_taken = alu1_s0_pred_taken;
                 alu1_s1_pred_target = alu1_s0_pred_target;
                 if (alu1_s0_opcode == OP_MOV_LIT)
-                    alu1_s1_result = {52'd0, alu1_s0_b[11:0]};
+                    alu1_s1_result = {alu1_s0_a[63:12], alu1_s0_b[11:0]};
                 else
                     alu1_s1_result = alu1_pipe_result;
 
@@ -1691,8 +1691,12 @@ module tinker_core (
                                             rs_src0_val[rs_idx] = src_val;
                                         end
                                         OP_MOV_LIT: begin
-                                            rs_use0[rs_idx] = 1'b0;
+                                            capture_operand_from_phys(old_dest_phys, src_wait, src_tag, src_val);
+                                            rs_use0[rs_idx] = 1'b1;
                                             rs_use1[rs_idx] = 1'b1;
+                                            rs_src0_wait[rs_idx] = src_wait;
+                                            rs_src0_tag[rs_idx] = src_tag;
+                                            rs_src0_val[rs_idx] = src_val;
                                             rs_src1_wait[rs_idx] = 1'b0;
                                             rs_src1_tag[rs_idx] = 6'd0;
                                             rs_src1_val[rs_idx] = slot_lit_zext;
