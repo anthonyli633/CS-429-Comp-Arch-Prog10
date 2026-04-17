@@ -72,6 +72,20 @@ module tb_fp_only;
         end
     endtask
 
+    task run_until_halt_count;
+        input integer max_cycles;
+        output integer total_cycles;
+        begin
+            total_cycles = 0;
+            while (!hlt && total_cycles < max_cycles) begin
+                @(posedge clk);
+                total_cycles = total_cycles + 1;
+            end
+            cycles = total_cycles;
+            #1;
+        end
+    endtask
+
     task expect64;
         input [255:0] name;
         input [63:0] got;
@@ -95,6 +109,19 @@ module tb_fp_only;
             end else begin
                 fails = fails + 1;
                 $display("FAIL %-20s got=%h expected=NaN", name, got);
+            end
+        end
+    endtask
+
+    task expect_true;
+        input [255:0] name;
+        input cond;
+        begin
+            if (!cond) begin
+                fails = fails + 1;
+                $display("FAIL %-20s", name);
+            end else begin
+                $display("PASS %-20s", name);
             end
         end
     endtask
@@ -160,6 +187,22 @@ module tb_fp_only;
         run_fp_case(enc_rrr(OP_ADDF, 5'd22, 5'd23, 5'd24), 5'd22, 5'd23, 5'd24,
             64'h7FF8_0000_0000_0001, 64'h3FF0_0000_0000_0000);
         expect_nan("ADDF NaN", dut.reg_file.registers[22]);
+
+        begin : dep_chain_case
+            integer dep_cycles;
+            clear_program();
+            write_inst(64'h2000, enc_rrr(OP_ADDF, 5'd1, 5'd2, 5'd3));
+            write_inst(64'h2004, enc_rrr(OP_ADDF, 5'd1, 5'd1, 5'd4));
+            write_inst(64'h2008, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+            do_reset();
+            dut.reg_file.registers[2] = 64'h3FF0_0000_0000_0000; // 1.0
+            dut.reg_file.registers[3] = 64'h4000_0000_0000_0000; // 2.0
+            dut.reg_file.registers[4] = 64'h4010_0000_0000_0000; // 4.0
+            run_until_halt_count(80, dep_cycles);
+            expect64("ADDF dep chain", dut.reg_file.registers[1], 64'h401C_0000_0000_0000);
+            expect_true("ADDF dep chain halts", hlt == 1'b1);
+            expect_true("ADDF dep chain cycles", dep_cycles <= 20);
+        end
 
         if (fails == 0)
             $display("\nALL FP TESTS PASSED");

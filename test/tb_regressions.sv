@@ -12,9 +12,11 @@ module tb_regressions;
     localparam OP_AND       = 5'h00;
     localparam OP_OR        = 5'h01;
     localparam OP_XOR       = 5'h02;
+    localparam OP_BRGT      = 5'h0e;
     localparam OP_BRNZ      = 5'h0b;
     localparam OP_PRIV      = 5'h0f;
     localparam OP_MOV_LOAD  = 5'h10;
+    localparam OP_MOV_LIT   = 5'h12;
     localparam OP_ADD       = 5'h18;
     localparam OP_ADDI      = 5'h19;
     localparam OP_SUB       = 5'h1a;
@@ -212,6 +214,56 @@ module tb_regressions;
         expect64("branch stress count", dut.reg_file.registers[4], 64'd20);
         expect64("branch stress tail", dut.reg_file.registers[5], 64'd0);
         expect_true("free list not drained", dut.free_count > 8);
+
+        // Backward BRGT loop regression for self-dependence and branch recovery.
+        clear_program();
+        write_inst(64'h2000, enc_rrr(OP_ADD, 5'd3, 5'd3, 5'd1));
+        write_inst(64'h2004, enc_rd_lit(OP_SUBI, 5'd1, 12'd1));
+        write_inst(64'h2008, enc_rrr(OP_BRGT, 5'd4, 5'd1, 5'd2));
+        write_inst(64'h200C, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+        do_reset();
+        dut.reg_file.registers[1] = 64'd4;
+        dut.reg_file.registers[2] = 64'd0;
+        dut.reg_file.registers[3] = 64'd0;
+        dut.reg_file.registers[4] = 64'h2000;
+        run_until_halt(160);
+        expect_true("brgt loop halts", hlt == 1'b1);
+        expect64("brgt loop sum", dut.reg_file.registers[3], 64'd10);
+        expect64("brgt loop count", dut.reg_file.registers[1], 64'd0);
+
+        // Preserve the 3-wide issue smoke tests after removing /test2.
+        clear_program();
+        write_inst(64'h2000, enc_rd_lit(OP_ADDI, 5'd1, 12'd10));
+        write_inst(64'h2004, enc_rd_lit(OP_ADDI, 5'd2, 12'd20));
+        write_inst(64'h2008, enc_rd_lit(OP_ADDI, 5'd3, 12'd30));
+        write_inst(64'h200C, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+        do_reset();
+        run_until_halt(80);
+        expect64("triple issue r1", dut.reg_file.registers[1], 64'd10);
+        expect64("triple issue r2", dut.reg_file.registers[2], 64'd20);
+        expect64("triple issue r3", dut.reg_file.registers[3], 64'd30);
+        expect_true("triple issue cadence", cycles <= 8);
+
+        clear_program();
+        write_inst(64'h2000, enc_rd_lit(OP_ADDI, 5'd1, 12'd5));
+        write_inst(64'h2004, enc_rd_lit(OP_ADDI, 5'd2, 12'd10));
+        write_inst(64'h2008, enc_rrr(OP_ADD, 5'd3, 5'd1, 5'd2));
+        write_inst(64'h200C, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+        do_reset();
+        run_until_halt(80);
+        expect64("issue fallback r1", dut.reg_file.registers[1], 64'd5);
+        expect64("issue fallback r2", dut.reg_file.registers[2], 64'd10);
+        expect64("issue fallback r3", dut.reg_file.registers[3], 64'd15);
+
+        // Keep a MOV_LIT/WAW regression in /test with the official semantics.
+        clear_program();
+        write_inst(64'h2000, enc_rd_lit(OP_MOV_LIT, 5'd5, 12'h123));
+        write_inst(64'h2004, enc_rd_lit(OP_MOV_LIT, 5'd5, 12'h456));
+        write_inst(64'h2008, {OP_PRIV, 5'd0, 5'd0, 5'd0, 12'h000});
+        do_reset();
+        dut.reg_file.registers[5] = 64'h1234_5678_9ABC_DEF0;
+        run_until_halt(80);
+        expect64("mov_lit waw result", dut.reg_file.registers[5], 64'h1234_5678_9ABC_D456);
 
         if (fails == 0)
             $display("\nALL REGRESSION TESTS PASSED");
