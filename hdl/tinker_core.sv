@@ -13,6 +13,8 @@ module tinker_core (
     localparam RS_SIZE        = 12;
     localparam LSQ_SIZE       = 8;
     localparam BHT_SIZE       = 256;
+    localparam FETCH_WIDTH    = 3;
+    localparam COMMIT_WIDTH   = 3;
 
     localparam OP_AND       = 5'h00;
     localparam OP_OR        = 5'h01;
@@ -1156,8 +1158,8 @@ module tinker_core (
                     checkpoint_valid = 1'b0;
                 end
 
-                // Retire up to two contiguous ready ROB entries each cycle.
-                for (commit_count = 0; commit_count < 2; commit_count = commit_count + 1) begin
+                // Retire up to COMMIT_WIDTH contiguous ready ROB entries each cycle.
+                for (commit_count = 0; commit_count < COMMIT_WIDTH; commit_count = commit_count + 1) begin
                     if (rob_count != 0 && rob_valid[rob_head] && rob_ready[rob_head]) begin
                         head_idx = rob_head;
 
@@ -1502,7 +1504,7 @@ module tinker_core (
                     if (halt_inflight)
                         fetch_stop = 1'b1;
 
-                    for (slot = 0; slot < 2; slot = slot + 1) begin
+                    for (slot = 0; slot < FETCH_WIDTH; slot = slot + 1) begin
                         if (!fetch_stop) begin
                             slot_inst = read_inst32(fetch.pc + (slot * 64'd4));
                             slot_opcode = slot_inst[31:27];
