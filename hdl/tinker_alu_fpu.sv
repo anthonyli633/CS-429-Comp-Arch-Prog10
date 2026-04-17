@@ -412,3 +412,130 @@ module tinker_alu_fpu(
         endcase
     end
 endmodule
+
+module fpu(
+    input         clk,
+    input         reset,
+    input         flush,
+    input         start,
+    input         consume,
+    input  [63:0] a,
+    input  [63:0] b,
+    input  [7:0]  op,
+    input  [4:0]  tag_in,
+    output wire   busy,
+    output wire   pending,
+    output wire   result_valid,
+    output wire [4:0] result_tag,
+    output wire [63:0] result
+);
+    localparam ALU_FADD = 6'd12;
+    localparam ALU_FSUB = 6'd13;
+    localparam ALU_FMUL = 6'd14;
+    localparam ALU_FDIV = 6'd15;
+
+    reg        s0_valid;
+    reg        s1_valid;
+    reg        s2_valid;
+    reg        s3_valid;
+    reg        s4_valid;
+    reg [63:0] s0_a;
+    reg [63:0] s0_b;
+    reg [7:0]  s0_op;
+    reg [4:0]  s0_tag;
+    reg [63:0] s1_result;
+    reg [63:0] s2_result;
+    reg [63:0] s3_result;
+    reg [63:0] s4_result;
+    reg [4:0]  s1_tag;
+    reg [4:0]  s2_tag;
+    reg [4:0]  s3_tag;
+    reg [4:0]  s4_tag;
+    reg [5:0]  compat_op;
+    wire [63:0] compat_result;
+
+    function [5:0] compat_sel;
+        input [7:0] opcode;
+        begin
+            case (opcode[4:0])
+                5'h14: compat_sel = ALU_FADD;
+                5'h15: compat_sel = ALU_FSUB;
+                5'h16: compat_sel = ALU_FMUL;
+                5'h17: compat_sel = ALU_FDIV;
+                default: compat_sel = ALU_FADD;
+            endcase
+        end
+    endfunction
+
+    always @(*) begin
+        compat_op = compat_sel(s0_op);
+    end
+
+    tinker_fpu compat_pipe (
+        .a(s0_a),
+        .b(s0_b),
+        .op(compat_op),
+        .result(compat_result)
+    );
+
+    assign busy = pending;
+    assign pending = s0_valid || s1_valid || s2_valid || s3_valid || s4_valid;
+    assign result_valid = s4_valid;
+    assign result_tag = s4_tag;
+    assign result = s4_result;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            s0_valid <= 1'b0;
+            s1_valid <= 1'b0;
+            s2_valid <= 1'b0;
+            s3_valid <= 1'b0;
+            s4_valid <= 1'b0;
+            s0_a <= 64'd0;
+            s0_b <= 64'd0;
+            s0_op <= 8'd0;
+            s0_tag <= 5'd0;
+            s1_result <= 64'd0;
+            s2_result <= 64'd0;
+            s3_result <= 64'd0;
+            s4_result <= 64'd0;
+            s1_tag <= 5'd0;
+            s2_tag <= 5'd0;
+            s3_tag <= 5'd0;
+            s4_tag <= 5'd0;
+        end else if (flush) begin
+            s0_valid <= 1'b0;
+            s1_valid <= 1'b0;
+            s2_valid <= 1'b0;
+            s3_valid <= 1'b0;
+            s4_valid <= 1'b0;
+        end else begin
+            s4_valid <= s3_valid;
+            s4_result <= s3_result;
+            s4_tag <= s3_tag;
+
+            s3_valid <= s2_valid;
+            s3_result <= s2_result;
+            s3_tag <= s2_tag;
+
+            s2_valid <= s1_valid;
+            s2_result <= s1_result;
+            s2_tag <= s1_tag;
+
+            s1_valid <= s0_valid;
+            s1_result <= compat_result;
+            s1_tag <= s0_tag;
+
+            s0_valid <= start;
+            if (start) begin
+                s0_a <= a;
+                s0_b <= b;
+                s0_op <= op;
+                s0_tag <= tag_in;
+            end
+
+            if (consume && !s3_valid)
+                s4_valid <= 1'b0;
+        end
+    end
+endmodule

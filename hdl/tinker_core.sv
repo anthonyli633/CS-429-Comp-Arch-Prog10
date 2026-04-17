@@ -455,7 +455,7 @@ module tinker_core (
 
     function automatic integer rob_younger_than(input integer entry_idx, input integer branch_idx);
         begin
-            rob_younger_than = rob_valid[entry_idx] && (rob_distance(entry_idx) > rob_distance(branch_idx));
+            rob_younger_than = (rob_distance(entry_idx) > rob_distance(branch_idx));
         end
     endfunction
 
@@ -622,6 +622,23 @@ module tinker_core (
                 tag_out = phys_reg;
                 value_out = 64'd0;
             end
+        end
+    endtask
+
+    // Preserve the current instruction's pre-rename mapping when it reads rd.
+    task automatic capture_slot_operand;
+        input [4:0] arch_reg;
+        input [4:0] dest_arch_reg;
+        input       has_dest;
+        input [5:0] old_dest_phys_in;
+        output reg wait_out;
+        output reg [5:0] tag_out;
+        output reg [63:0] value_out;
+        begin
+            if (has_dest && (arch_reg == dest_arch_reg))
+                capture_operand_from_phys(old_dest_phys_in, wait_out, tag_out, value_out);
+            else
+                capture_operand(arch_reg, wait_out, tag_out, value_out);
         end
     endtask
 
@@ -1592,7 +1609,10 @@ module tinker_core (
                                     lsq_rob_idx[lsq_idx] = rob_idx[3:0];
 
                                     if (is_load_opcode(slot_opcode)) begin
-                                        capture_operand(slot_rs, src_wait, src_tag, src_val);
+                                        capture_slot_operand(
+                                            slot_rs, slot_rd, need_dest_phys, old_dest_phys,
+                                            src_wait, src_tag, src_val
+                                        );
                                         lsq_base_wait[lsq_idx] = src_wait;
                                         lsq_base_tag[lsq_idx] = src_tag;
                                         lsq_base_val[lsq_idx] = src_val;
@@ -1641,8 +1661,14 @@ module tinker_core (
                                         OP_AND, OP_OR, OP_XOR, OP_SHFTR, OP_SHFTL,
                                         OP_ADD, OP_SUB, OP_MUL, OP_DIV,
                                         OP_ADDF, OP_SUBF, OP_MULF, OP_DIVF: begin
-                                            capture_operand(slot_rs, src_wait, src_tag, src_val);
-                                            capture_operand(slot_rt, src_wait1, src_tag1, src_val1);
+                                            capture_slot_operand(
+                                                slot_rs, slot_rd, need_dest_phys, old_dest_phys,
+                                                src_wait, src_tag, src_val
+                                            );
+                                            capture_slot_operand(
+                                                slot_rt, slot_rd, need_dest_phys, old_dest_phys,
+                                                src_wait1, src_tag1, src_val1
+                                            );
                                             rs_use0[rs_idx] = 1'b1;
                                             rs_use1[rs_idx] = 1'b1;
                                             rs_src0_wait[rs_idx] = src_wait;
@@ -1653,7 +1679,10 @@ module tinker_core (
                                             rs_src1_val[rs_idx] = src_val1;
                                         end
                                         OP_NOT, OP_MOV_REG: begin
-                                            capture_operand(slot_rs, src_wait, src_tag, src_val);
+                                            capture_slot_operand(
+                                                slot_rs, slot_rd, need_dest_phys, old_dest_phys,
+                                                src_wait, src_tag, src_val
+                                            );
                                             rs_use0[rs_idx] = 1'b1;
                                             rs_src0_wait[rs_idx] = src_wait;
                                             rs_src0_tag[rs_idx] = src_tag;
