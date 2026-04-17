@@ -92,16 +92,18 @@ module tinker_core (
     integer slot_pc_offset;
     integer fetch_bht_idx;
     integer commit_count;
-    integer free_snapshot_count;
+    integer oldest_checkpoint_rob_idx;
+    integer mispredict_rob_idx;
 
     reg [63:0] phys_value [0:PHYS_REGS-1];
     reg        phys_ready [0:PHYS_REGS-1];
     reg [5:0]  rat [0:ARCH_REGS-1];
-    reg [5:0]  checkpoint_rat [0:ARCH_REGS-1];
     reg [5:0]  free_list [0:FREE_COUNT_MAX-1];
-    reg [5:0]  checkpoint_free_list [0:FREE_COUNT_MAX-1];
     integer    free_count;
-    integer    checkpoint_free_count;
+    reg        checkpoint_valid [0:ROB_SIZE-1];
+    reg [5:0]  checkpoint_rat [0:ROB_SIZE-1][0:ARCH_REGS-1];
+    reg [5:0]  checkpoint_free_list [0:ROB_SIZE-1][0:FREE_COUNT_MAX-1];
+    integer    checkpoint_free_count [0:ROB_SIZE-1];
 
     reg        rob_valid [0:ROB_SIZE-1];
     reg        rob_ready [0:ROB_SIZE-1];
@@ -167,9 +169,6 @@ module tinker_core (
     reg [1:0]  bht [0:BHT_SIZE-1];
     reg        btb_valid [0:BHT_SIZE-1];
     reg [63:0] btb_target [0:BHT_SIZE-1];
-
-    reg        checkpoint_valid;
-    integer    checkpoint_rob_idx;
 
     reg        alu0_s0_valid;
     reg [4:0]  alu0_s0_opcode;
@@ -814,7 +813,10 @@ module tinker_core (
             if ((branch_taken != resolve_pred_taken) ||
                 (branch_taken && (branch_target != resolve_pred_target))) begin
                 mispredict = 1'b1;
+                mispredict_rob_idx = resolve_rob_idx;
                 correct_pc = branch_taken ? branch_target : (resolve_pc + 64'd4);
+            end else begin
+                checkpoint_valid[resolve_rob_idx] = 1'b0;
             end
         end
     endtask
@@ -884,10 +886,7 @@ module tinker_core (
             rob_head = 0;
             rob_tail = 0;
             rob_count = 0;
-            checkpoint_valid = 1'b0;
-            checkpoint_rob_idx = 0;
             free_count = FREE_COUNT_MAX;
-            checkpoint_free_count = FREE_COUNT_MAX;
 
             alu0_s0_valid = 1'b0;
             alu1_s0_valid = 1'b0;
@@ -908,7 +907,6 @@ module tinker_core (
 
             for (i = 0; i < ARCH_REGS; i = i + 1) begin
                 rat[i] = i[5:0];
-                checkpoint_rat[i] = i[5:0];
             end
 
             for (i = 0; i < PHYS_REGS; i = i + 1) begin
@@ -919,7 +917,15 @@ module tinker_core (
 
             for (i = 0; i < FREE_COUNT_MAX; i = i + 1) begin
                 free_list[i] = ARCH_REGS + i;
-                checkpoint_free_list[i] = ARCH_REGS + i;
+            end
+
+            for (i = 0; i < ROB_SIZE; i = i + 1) begin
+                checkpoint_valid[i] = 1'b0;
+                checkpoint_free_count[i] = FREE_COUNT_MAX;
+                for (j = 0; j < ARCH_REGS; j = j + 1)
+                    checkpoint_rat[i][j] = j[5:0];
+                for (j = 0; j < FREE_COUNT_MAX; j = j + 1)
+                    checkpoint_free_list[i][j] = ARCH_REGS + j;
             end
 
             for (i = 0; i < ROB_SIZE; i = i + 1) begin
@@ -996,6 +1002,7 @@ module tinker_core (
                 fetch.pc = fetch.pc;
             end else begin
                 mispredict = 1'b0;
+                mispredict_rob_idx = 0;
                 correct_pc = fetch.pc;
 
                 if (alu0_s1_valid) begin
@@ -1094,68 +1101,65 @@ module tinker_core (
                     );
                 end
 
-                if (mispredict && checkpoint_valid) begin
+                if (mispredict && checkpoint_valid[mispredict_rob_idx]) begin
                     for (i = 0; i < ARCH_REGS; i = i + 1)
-                        rat[i] = checkpoint_rat[i];
+                        rat[i] = checkpoint_rat[mispredict_rob_idx][i];
 
-                    free_count = checkpoint_free_count;
+                    free_count = checkpoint_free_count[mispredict_rob_idx];
                     for (i = 0; i < FREE_COUNT_MAX; i = i + 1)
-                        free_list[i] = checkpoint_free_list[i];
+                        free_list[i] = checkpoint_free_list[mispredict_rob_idx][i];
 
                     for (i = 0; i < ROB_SIZE; i = i + 1) begin
-                        if (rob_younger_than(i, checkpoint_rob_idx))
+                        if (rob_younger_than(i, mispredict_rob_idx))
                             rob_valid[i] = 1'b0;
+                        if ((i == mispredict_rob_idx) || rob_younger_than(i, mispredict_rob_idx))
+                            checkpoint_valid[i] = 1'b0;
                     end
-                    rob_tail = rob_inc(checkpoint_rob_idx);
-                    rob_count = rob_distance(checkpoint_rob_idx) + 1;
+                    rob_tail = rob_inc(mispredict_rob_idx);
+                    rob_count = rob_distance(mispredict_rob_idx) + 1;
 
                     for (i = 0; i < RS_SIZE; i = i + 1) begin
-                        if (rs_valid[i] && rob_younger_than(rs_rob_idx[i], checkpoint_rob_idx))
+                        if (rs_valid[i] && rob_younger_than(rs_rob_idx[i], mispredict_rob_idx))
                             rs_valid[i] = 1'b0;
                     end
 
                     for (i = 0; i < LSQ_SIZE; i = i + 1) begin
-                        if (lsq_valid[i] && rob_younger_than(lsq_rob_idx[i], checkpoint_rob_idx)) begin
+                        if (lsq_valid[i] && rob_younger_than(lsq_rob_idx[i], mispredict_rob_idx)) begin
                             lsq_valid[i] = 1'b0;
                             lsq_inflight[i] = 1'b0;
                         end
                     end
 
-                    if (alu0_s0_valid && rob_younger_than(alu0_s0_rob_idx, checkpoint_rob_idx)) alu0_s0_valid = 1'b0;
-                    if (alu1_s0_valid && rob_younger_than(alu1_s0_rob_idx, checkpoint_rob_idx)) alu1_s0_valid = 1'b0;
-                    if (alu0_s1_valid && rob_younger_than(alu0_s1_rob_idx, checkpoint_rob_idx)) alu0_s1_valid = 1'b0;
-                    if (alu1_s1_valid && rob_younger_than(alu1_s1_rob_idx, checkpoint_rob_idx)) alu1_s1_valid = 1'b0;
-                    if (fpu0_s0_valid && rob_younger_than(fpu0_s0_rob_idx, checkpoint_rob_idx)) fpu0_s0_valid = 1'b0;
-                    if (fpu1_s0_valid && rob_younger_than(fpu1_s0_rob_idx, checkpoint_rob_idx)) fpu1_s0_valid = 1'b0;
-                    if (fpu0_s1_valid && rob_younger_than(fpu0_s1_rob_idx, checkpoint_rob_idx)) fpu0_s1_valid = 1'b0;
-                    if (fpu1_s1_valid && rob_younger_than(fpu1_s1_rob_idx, checkpoint_rob_idx)) fpu1_s1_valid = 1'b0;
-                    if (fpu0_s2_valid && rob_younger_than(fpu0_s2_rob_idx, checkpoint_rob_idx)) fpu0_s2_valid = 1'b0;
-                    if (fpu1_s2_valid && rob_younger_than(fpu1_s2_rob_idx, checkpoint_rob_idx)) fpu1_s2_valid = 1'b0;
-                    if (fpu0_s3_valid && rob_younger_than(fpu0_s3_rob_idx, checkpoint_rob_idx)) fpu0_s3_valid = 1'b0;
-                    if (fpu1_s3_valid && rob_younger_than(fpu1_s3_rob_idx, checkpoint_rob_idx)) fpu1_s3_valid = 1'b0;
-                    if (lsu0_s0_valid && rob_younger_than(lsu0_s0_rob_idx, checkpoint_rob_idx)) begin
+                    if (alu0_s0_valid && rob_younger_than(alu0_s0_rob_idx, mispredict_rob_idx)) alu0_s0_valid = 1'b0;
+                    if (alu1_s0_valid && rob_younger_than(alu1_s0_rob_idx, mispredict_rob_idx)) alu1_s0_valid = 1'b0;
+                    if (alu0_s1_valid && rob_younger_than(alu0_s1_rob_idx, mispredict_rob_idx)) alu0_s1_valid = 1'b0;
+                    if (alu1_s1_valid && rob_younger_than(alu1_s1_rob_idx, mispredict_rob_idx)) alu1_s1_valid = 1'b0;
+                    if (fpu0_s0_valid && rob_younger_than(fpu0_s0_rob_idx, mispredict_rob_idx)) fpu0_s0_valid = 1'b0;
+                    if (fpu1_s0_valid && rob_younger_than(fpu1_s0_rob_idx, mispredict_rob_idx)) fpu1_s0_valid = 1'b0;
+                    if (fpu0_s1_valid && rob_younger_than(fpu0_s1_rob_idx, mispredict_rob_idx)) fpu0_s1_valid = 1'b0;
+                    if (fpu1_s1_valid && rob_younger_than(fpu1_s1_rob_idx, mispredict_rob_idx)) fpu1_s1_valid = 1'b0;
+                    if (fpu0_s2_valid && rob_younger_than(fpu0_s2_rob_idx, mispredict_rob_idx)) fpu0_s2_valid = 1'b0;
+                    if (fpu1_s2_valid && rob_younger_than(fpu1_s2_rob_idx, mispredict_rob_idx)) fpu1_s2_valid = 1'b0;
+                    if (fpu0_s3_valid && rob_younger_than(fpu0_s3_rob_idx, mispredict_rob_idx)) fpu0_s3_valid = 1'b0;
+                    if (fpu1_s3_valid && rob_younger_than(fpu1_s3_rob_idx, mispredict_rob_idx)) fpu1_s3_valid = 1'b0;
+                    if (lsu0_s0_valid && rob_younger_than(lsu0_s0_rob_idx, mispredict_rob_idx)) begin
                         lsq_inflight[lsu0_s0_lsq_idx] = 1'b0;
                         lsu0_s0_valid = 1'b0;
                     end
-                    if (lsu1_s0_valid && rob_younger_than(lsu1_s0_rob_idx, checkpoint_rob_idx)) begin
+                    if (lsu1_s0_valid && rob_younger_than(lsu1_s0_rob_idx, mispredict_rob_idx)) begin
                         lsq_inflight[lsu1_s0_lsq_idx] = 1'b0;
                         lsu1_s0_valid = 1'b0;
                     end
-                    if (lsu0_s1_valid && rob_younger_than(lsu0_s1_rob_idx, checkpoint_rob_idx)) begin
+                    if (lsu0_s1_valid && rob_younger_than(lsu0_s1_rob_idx, mispredict_rob_idx)) begin
                         lsq_inflight[lsu0_s1_lsq_idx] = 1'b0;
                         lsu0_s1_valid = 1'b0;
                     end
-                    if (lsu1_s1_valid && rob_younger_than(lsu1_s1_rob_idx, checkpoint_rob_idx)) begin
+                    if (lsu1_s1_valid && rob_younger_than(lsu1_s1_rob_idx, mispredict_rob_idx)) begin
                         lsq_inflight[lsu1_s1_lsq_idx] = 1'b0;
                         lsu1_s1_valid = 1'b0;
                     end
 
-                    checkpoint_valid = 1'b0;
                     fetch.pc = correct_pc;
-                end else if (!mispredict && checkpoint_valid &&
-                             rob_valid[checkpoint_rob_idx] &&
-                             rob_ready[checkpoint_rob_idx]) begin
-                    checkpoint_valid = 1'b0;
                 end
 
                 // Retire up to COMMIT_WIDTH contiguous ready ROB entries each cycle.
@@ -1189,9 +1193,11 @@ module tinker_core (
                             if (rob_old_phys[head_idx] >= ARCH_REGS) begin
                                 free_list[free_count] = rob_old_phys[head_idx];
                                 free_count = free_count + 1;
-                                if (checkpoint_valid) begin
-                                    checkpoint_free_list[checkpoint_free_count] = rob_old_phys[head_idx];
-                                    checkpoint_free_count = checkpoint_free_count + 1;
+                                for (i = 0; i < ROB_SIZE; i = i + 1) begin
+                                    if (checkpoint_valid[i] && (checkpoint_free_count[i] < FREE_COUNT_MAX)) begin
+                                        checkpoint_free_list[i][checkpoint_free_count[i]] = rob_old_phys[head_idx];
+                                        checkpoint_free_count[i] = checkpoint_free_count[i] + 1;
+                                    end
                                 end
                             end
                         end
@@ -1200,6 +1206,7 @@ module tinker_core (
                             hlt <= 1'b1;
 
                         rob_valid[head_idx] = 1'b0;
+                        checkpoint_valid[head_idx] = 1'b0;
                         rob_head = rob_inc(head_idx);
                         rob_count = rob_count - 1;
                     end
@@ -1496,9 +1503,17 @@ module tinker_core (
                     fetch_pc_next = fetch.pc;
                     fetch_stop = 1'b0;
                     halt_inflight = 1'b0;
+                    oldest_checkpoint_rob_idx = -1;
+                    for (i = 0; i < ROB_SIZE; i = i + 1) begin
+                        if (checkpoint_valid[i] && rob_valid[i] &&
+                            ((oldest_checkpoint_rob_idx == -1) ||
+                             (rob_distance(i) < rob_distance(oldest_checkpoint_rob_idx))))
+                            oldest_checkpoint_rob_idx = i;
+                    end
                     for (i = 0; i < ROB_SIZE; i = i + 1) begin
                         if (rob_valid[i] && rob_is_halt[i] &&
-                            (!checkpoint_valid || !rob_younger_than(i, checkpoint_rob_idx)))
+                            ((oldest_checkpoint_rob_idx == -1) ||
+                             !rob_younger_than(i, oldest_checkpoint_rob_idx)))
                             halt_inflight = 1'b1;
                     end
                     if (halt_inflight)
@@ -1542,8 +1557,6 @@ module tinker_core (
                                             fetch_stop = 1'b1;
                                     end
 
-                                    if (is_branch_opcode(slot_opcode) && checkpoint_valid)
-                                        fetch_stop = 1'b1;
                                 end
                             end
 
@@ -1566,6 +1579,7 @@ module tinker_core (
                                 rob_store_data_ready[rob_idx] = 1'b0;
                                 rob_is_branch[rob_idx] = is_branch_opcode(slot_opcode);
                                 rob_is_halt[rob_idx] = is_halt_opcode(slot_opcode, slot_lit12);
+                                checkpoint_valid[rob_idx] = 1'b0;
 
                                 if (need_dest_phys) begin
                                     new_dest_phys = free_list[free_count - 1];
@@ -1588,13 +1602,12 @@ module tinker_core (
                                     predict_instruction(fetch.pc + (slot * 64'd4), slot_opcode, slot_lit12, slot_pred_taken, slot_pred_target);
                                     rob_pred_taken[rob_idx] = slot_pred_taken;
                                     rob_pred_target[rob_idx] = slot_pred_target;
-                                    checkpoint_valid = 1'b1;
-                                    checkpoint_rob_idx = rob_idx;
-                                    checkpoint_free_count = free_count;
+                                    checkpoint_valid[rob_idx] = 1'b1;
+                                    checkpoint_free_count[rob_idx] = free_count;
                                     for (i = 0; i < ARCH_REGS; i = i + 1)
-                                        checkpoint_rat[i] = rat[i];
+                                        checkpoint_rat[rob_idx][i] = rat[i];
                                     for (i = 0; i < FREE_COUNT_MAX; i = i + 1)
-                                        checkpoint_free_list[i] = free_list[i];
+                                        checkpoint_free_list[rob_idx][i] = free_list[i];
                                 end else begin
                                     rob_pred_taken[rob_idx] = 1'b0;
                                     rob_pred_target[rob_idx] = 64'd0;
