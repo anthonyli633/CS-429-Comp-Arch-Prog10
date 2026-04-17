@@ -1,0 +1,475 @@
+$date
+	Fri Apr 17 00:51:11 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_fpu_unit $end
+$var wire 1 ! result_valid $end
+$var wire 5 " result_tag [4:0] $end
+$var wire 64 # result [63:0] $end
+$var wire 1 $ pending $end
+$var wire 1 % busy $end
+$var reg 64 & a [63:0] $end
+$var reg 64 ' b [63:0] $end
+$var reg 1 ( clk $end
+$var reg 1 ) consume $end
+$var reg 1 * flush $end
+$var reg 8 + op [7:0] $end
+$var reg 1 , reset $end
+$var reg 1 - start $end
+$var reg 5 . tag_in [4:0] $end
+$var integer 32 / cycle [31:0] $end
+$scope module uut $end
+$var wire 64 0 a [63:0] $end
+$var wire 64 1 b [63:0] $end
+$var wire 1 % busy $end
+$var wire 1 ( clk $end
+$var wire 1 ) consume $end
+$var wire 1 * flush $end
+$var wire 8 2 op [7:0] $end
+$var wire 1 $ pending $end
+$var wire 1 , reset $end
+$var wire 64 3 result [63:0] $end
+$var wire 5 4 result_tag [4:0] $end
+$var wire 1 ! result_valid $end
+$var wire 1 - start $end
+$var wire 5 5 tag_in [4:0] $end
+$var wire 64 6 compat_result [63:0] $end
+$var parameter 6 7 ALU_FADD $end
+$var parameter 6 8 ALU_FDIV $end
+$var parameter 6 9 ALU_FMUL $end
+$var parameter 6 : ALU_FSUB $end
+$var reg 6 ; compat_op [5:0] $end
+$var reg 64 < s0_a [63:0] $end
+$var reg 64 = s0_b [63:0] $end
+$var reg 8 > s0_op [7:0] $end
+$var reg 5 ? s0_tag [4:0] $end
+$var reg 1 @ s0_valid $end
+$var reg 64 A s1_result [63:0] $end
+$var reg 5 B s1_tag [4:0] $end
+$var reg 1 C s1_valid $end
+$var reg 64 D s2_result [63:0] $end
+$var reg 5 E s2_tag [4:0] $end
+$var reg 1 F s2_valid $end
+$var reg 64 G s3_result [63:0] $end
+$var reg 5 H s3_tag [4:0] $end
+$var reg 1 I s3_valid $end
+$var reg 64 J s4_result [63:0] $end
+$var reg 5 K s4_tag [4:0] $end
+$var reg 1 L s4_valid $end
+$scope function compat_sel $end
+$var reg 8 M opcode [7:0] $end
+$upscope $end
+$scope module compat_pipe $end
+$var wire 64 N a [63:0] $end
+$var wire 64 O b [63:0] $end
+$var wire 6 P op [5:0] $end
+$var parameter 6 Q ALU_FADD $end
+$var parameter 6 R ALU_FDIV $end
+$var parameter 6 S ALU_FMUL $end
+$var parameter 6 T ALU_FSUB $end
+$var parameter 64 U QUIET_NAN $end
+$var reg 64 V result [63:0] $end
+$scope function fp_addsub64 $end
+$var reg 11 W ex [10:0] $end
+$var reg 56 X ex_big [55:0] $end
+$var reg 56 Y ex_res [55:0] $end
+$var reg 56 Z ex_small [55:0] $end
+$var reg 11 [ ey [10:0] $end
+$var reg 52 \ fx [51:0] $end
+$var reg 52 ] fy [51:0] $end
+$var reg 53 ^ m_big [52:0] $end
+$var reg 53 _ m_small [52:0] $end
+$var reg 53 ` mx [52:0] $end
+$var reg 53 a my [52:0] $end
+$var reg 1 b s_big $end
+$var reg 1 c s_small $end
+$var reg 1 d sr $end
+$var reg 1 e sub $end
+$var reg 57 f sum57 [56:0] $end
+$var reg 1 g sx $end
+$var reg 1 h sy $end
+$var reg 64 i x [63:0] $end
+$var reg 64 j y [63:0] $end
+$var reg 64 k y2 [63:0] $end
+$var integer 32 l e1 [31:0] $end
+$var integer 32 m e2 [31:0] $end
+$var integer 32 n e_big [31:0] $end
+$var integer 32 o e_small [31:0] $end
+$var integer 32 p er [31:0] $end
+$var integer 32 q norm_i [31:0] $end
+$var integer 32 r sh [31:0] $end
+$upscope $end
+$scope function fp_div64 $end
+$var reg 11 s ex [10:0] $end
+$var reg 11 t ey [10:0] $end
+$var reg 53 u mx [52:0] $end
+$var reg 53 v my [52:0] $end
+$var reg 108 w num [107:0] $end
+$var reg 56 x q [55:0] $end
+$var reg 53 y rem [52:0] $end
+$var reg 1 z sr $end
+$var reg 1 { sx $end
+$var reg 1 | sy $end
+$var reg 64 } x [63:0] $end
+$var reg 64 ~ y [63:0] $end
+$var integer 32 !" e1 [31:0] $end
+$var integer 32 "" e2 [31:0] $end
+$var integer 32 #" er [31:0] $end
+$upscope $end
+$scope function fp_mul64 $end
+$var reg 11 $" ex [10:0] $end
+$var reg 56 %" ext [55:0] $end
+$var reg 11 &" ey [10:0] $end
+$var reg 53 '" mx [52:0] $end
+$var reg 53 (" my [52:0] $end
+$var reg 106 )" prod [105:0] $end
+$var reg 1 *" sr $end
+$var reg 1 +" sx $end
+$var reg 1 ," sy $end
+$var reg 64 -" x [63:0] $end
+$var reg 64 ." y [63:0] $end
+$var integer 32 /" e1 [31:0] $end
+$var integer 32 0" e2 [31:0] $end
+$var integer 32 1" er [31:0] $end
+$upscope $end
+$scope function is_inf64 $end
+$var reg 64 2" x [63:0] $end
+$upscope $end
+$scope function is_nan64 $end
+$var reg 64 3" x [63:0] $end
+$upscope $end
+$scope function is_zero64 $end
+$var reg 64 4" x [63:0] $end
+$upscope $end
+$scope function pack $end
+$var reg 56 5" ext [55:0] $end
+$var reg 56 6" ext_r [55:0] $end
+$var reg 1 7" guard $end
+$var reg 1 8" inc $end
+$var reg 1 9" roundb $end
+$var reg 53 :" sig_main [52:0] $end
+$var reg 54 ;" sig_round [53:0] $end
+$var reg 1 <" sign $end
+$var reg 1 =" sticky $end
+$var integer 32 >" exp_r [31:0] $end
+$var integer 32 ?" exp_unbiased [31:0] $end
+$var integer 32 @" sh [31:0] $end
+$upscope $end
+$scope function shr_sticky56 $end
+$var reg 1 A" sticky $end
+$var reg 56 B" tmp [55:0] $end
+$var reg 56 C" x [55:0] $end
+$var integer 32 D" i [31:0] $end
+$var integer 32 E" sh [31:0] $end
+$upscope $end
+$upscope $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b111111111111000000000000000000000000000000000000000000000000000 U
+b1101 T
+b1110 S
+b1111 R
+b1100 Q
+b1101 :
+b1110 9
+b1111 8
+b1100 7
+$end
+#0
+$dumpvars
+bx E"
+bx D"
+bx C"
+bx B"
+xA"
+bx @"
+bx ?"
+bx >"
+x="
+x<"
+bx ;"
+bx :"
+x9"
+x8"
+x7"
+bx 6"
+bx 5"
+b0 4"
+b0 3"
+b0 2"
+bx 1"
+bx 0"
+bx /"
+bx ."
+bx -"
+x,"
+x+"
+x*"
+bx )"
+bx ("
+bx '"
+bx &"
+bx %"
+bx $"
+bx #"
+bx ""
+bx !"
+bx ~
+bx }
+x|
+x{
+xz
+bx y
+bx x
+bx w
+bx v
+bx u
+bx t
+bx s
+bx r
+bx q
+bx p
+bx o
+bx n
+bx m
+bx l
+b0 k
+b0 j
+b0 i
+xh
+xg
+bx f
+0e
+xd
+xc
+xb
+bx a
+bx `
+bx _
+bx ^
+bx ]
+bx \
+bx [
+bx Z
+bx Y
+bx X
+bx W
+b0 V
+b1100 P
+b0 O
+b0 N
+b0 M
+0L
+b0 K
+b0 J
+0I
+b0 H
+b0 G
+0F
+b0 E
+b0 D
+0C
+b0 B
+b0 A
+0@
+b0 ?
+b0 >
+b0 =
+b0 <
+b1100 ;
+b0 6
+b0 5
+b0 4
+b0 3
+b0 2
+b0 1
+b0 0
+b0 /
+b0 .
+0-
+1,
+b0 +
+0*
+0)
+0(
+b0 '
+b0 &
+0%
+0$
+b0 #
+b0 "
+0!
+$end
+#5000
+1(
+#10000
+0(
+#15000
+1%
+1$
+b10100 M
+b100000000001000000000000000000000000000000000000000000000000000 6
+b100000000001000000000000000000000000000000000000000000000000000 V
+b11000000000000000000000000000000000000000000000000000 ;"
+08"
+0="
+09"
+07"
+b11000000000000000000000000000000000000000000000000000 :"
+b1 >"
+b11000000000000000000000000000000000000000000000000000000 6"
+0<"
+b1 ?"
+b11000000000000000000000000000000000000000000000000000000 5"
+b11000000000000000000000000000000000000000000000000000000 Y
+0d
+b11000000000000000000000000000000000000000000000000000000 f
+b1000000000000000000000000000000000000000000000000000000 Z
+b1 D"
+0A"
+b1000000000000000000000000000000000000000000000000000000 B"
+b10000000000000000000000000000000000000000000000000000000 C"
+b1 E"
+b1 r
+b10000000000000000000000000000000000000000000000000000000 X
+b1 p
+0c
+b10000000000000000000000000000000000000000000000000000 _
+b0 o
+0b
+b10000000000000000000000000000000000000000000000000000 ^
+b1 n
+b10000000000000000000000000000000000000000000000000000 a
+b10000000000000000000000000000000000000000000000000000 `
+b1 m
+b0 l
+b0 ]
+b0 \
+b10000000000 [
+b1111111111 W
+0h
+0g
+b11111111110000000000000000000000000000000000000000000000000000 4"
+b100000000000000000000000000000000000000000000000000000000000000 2"
+b100000000000000000000000000000000000000000000000000000000000000 3"
+b100000000000000000000000000000000000000000000000000000000000000 k
+b11111111110000000000000000000000000000000000000000000000000000 i
+b100000000000000000000000000000000000000000000000000000000000000 j
+b101 ?
+b10100 >
+b100000000000000000000000000000000000000000000000000000000000000 =
+b100000000000000000000000000000000000000000000000000000000000000 O
+b11111111110000000000000000000000000000000000000000000000000000 <
+b11111111110000000000000000000000000000000000000000000000000000 N
+1@
+1-
+b101 .
+b101 5
+b10100 +
+b10100 2
+b100000000000000000000000000000000000000000000000000000000000000 '
+b100000000000000000000000000000000000000000000000000000000000000 1
+b11111111110000000000000000000000000000000000000000000000000000 &
+b11111111110000000000000000000000000000000000000000000000000000 0
+0,
+1(
+#20000
+0(
+#25000
+b101 B
+b100000000001000000000000000000000000000000000000000000000000000 A
+1C
+b1 /
+1(
+#26000
+0-
+#30000
+0(
+#35000
+0@
+b101 E
+b100000000001000000000000000000000000000000000000000000000000000 D
+1F
+1(
+#36000
+b10 /
+#40000
+0(
+#45000
+0C
+b101 H
+b100000000001000000000000000000000000000000000000000000000000000 G
+1I
+1(
+#46000
+b11 /
+#50000
+0(
+#55000
+0F
+b101 "
+b101 4
+b101 K
+b100000000001000000000000000000000000000000000000000000000000000 #
+b100000000001000000000000000000000000000000000000000000000000000 3
+b100000000001000000000000000000000000000000000000000000000000000 J
+1!
+1L
+1(
+#56000
+b100 /
+#60000
+0(
+#65000
+0I
+1(
+#66000
+b101 /
+#70000
+0(
+#75000
+0%
+0$
+0!
+0L
+1(
+#76000
+b110 /
+#80000
+0(
+#85000
+1(
+#86000
+b111 /
+#90000
+0(
+#95000
+1(
+#96000
+b1000 /
+#100000
+0(
+#105000
+1(
+#106000
+b1001 /
+#110000
+0(
+#115000
+1(
+#116000
+b1010 /
+#120000
+0(
+#125000
+1(
+#126000
+b1011 /
